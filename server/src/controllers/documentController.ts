@@ -23,14 +23,41 @@ const UpdateDocumentSchema = z.object({
   jiraEpicKey: z.string().optional().nullable(),
 });
 
+const RICH_REFERENCE_MIN_CHARS = 200;
+
 const GenerateSchema = z.object({
   projectId: z.string().cuid(),
   documentType: z.enum(['PRD', 'USER_STORIES', 'TECHNICAL_SPEC', 'PRODUCT_BRIEF', 'ROADMAP', 'OKRS']),
-  input: z.string().min(5, 'Input must be at least 5 characters'),
+  input: z.string().max(500_000),
   inputType: z.enum(['idea', 'notes', 'form', 'url']),
   language: z.string().optional(),
   tone: z.enum(['Formal', 'Startup', 'Technical']).optional(),
 });
+
+function resolveGenerationInput(
+  rawInput: string,
+  documentType: DocumentType,
+  referenceContextLength: number
+): string {
+  const trimmed = rawInput.trim();
+  const refLen = referenceContextLength ?? 0;
+  const hasRichReference = refLen >= RICH_REFERENCE_MIN_CHARS;
+
+  if (trimmed.length >= 5) return trimmed;
+
+  if (hasRichReference) {
+    const base =
+      'No separate author notes for this run. Use the project client context and synced reference materials (folder/Drive) as the primary sources. ' +
+      `Document type: ${documentType}. Produce the complete requested document; follow system instructions on assumptions and when to ask questions.`;
+    if (trimmed.length === 0) return base;
+    return `Author focus: ${trimmed}\n\n${base}`;
+  }
+
+  throw new AppError(
+    400,
+    'Add at least 5 characters of idea, notes, or form content—or sync folder/Drive reference materials (about 200+ characters of text) so the model can draft from the project alone.'
+  );
+}
 
 /** Helper: verify user has access to a document's project */
 async function assertDocumentAccess(documentId: string, userId: string) {
@@ -218,12 +245,14 @@ export async function generateDocument(req: Request, res: Response, next: NextFu
     });
     if (!project) throw new AppError(404, 'Project not found');
 
+    const generationInput = resolveGenerationInput(body.input, body.documentType, project.referenceContextLength);
+
     // Get user settings for global prefix and defaults
     const settings = await prisma.userSettings.findUnique({ where: { userId } });
 
     await streamDocumentGeneration(
       {
-        input: body.input,
+        input: generationInput,
         documentType: body.documentType,
         clientContext: buildFullClientContext(project),
         language: body.language ?? settings?.language ?? 'en',

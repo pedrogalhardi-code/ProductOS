@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDocumentStore } from '../stores/documentStore';
-import { documents, streamGenerate } from '../services/api';
+import { documents, projects, streamGenerate } from '../services/api';
 import {
   FileText,
   List,
@@ -14,7 +14,7 @@ import {
   Loader,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { DocumentType } from '@shared/types';
+import type { DocumentType, ProjectDto } from '@shared/types';
 
 const documentTypes = [
   {
@@ -77,6 +77,30 @@ export default function NewDocumentPage() {
   const [tone, setTone] = useState<'Formal' | 'Startup' | 'Technical'>(
     'Formal'
   );
+  const [projectForGen, setProjectForGen] = useState<ProjectDto | null>(null);
+
+  const RICH_REFERENCE_MIN = 200;
+  const hasRichReference =
+    (projectForGen?.referenceContextLength ?? 0) >= RICH_REFERENCE_MIN;
+
+  useEffect(() => {
+    if (!projectId) {
+      setProjectForGen(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await projects.get(projectId);
+        if (!cancelled) setProjectForGen(res.data.data);
+      } catch {
+        if (!cancelled) setProjectForGen(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const addDocument = useDocumentStore((s) => s.addDocument);
   const setIsGenerating = useDocumentStore((s) => s.setIsGenerating);
@@ -100,8 +124,8 @@ export default function NewDocumentPage() {
 
   const handleGenerate = () => {
     const content = getInputContent();
-    if (!content.trim()) {
-      toast.error('Please provide input content');
+    if (!content.trim() && !hasRichReference) {
+      toast.error('Please provide input content—or sync reference materials on the project (about 200+ characters)');
       return;
     }
 
@@ -207,6 +231,17 @@ export default function NewDocumentPage() {
       ) : step === 2 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-6">
+            {hasRichReference && (
+              <div className="rounded-lg border border-telus-purple/30 bg-telus-purple/5 px-4 py-3 text-sm text-gray-700">
+                <p className="font-medium text-gray-900 mb-1">Synced reference materials available</p>
+                <p>
+                  This project includes substantial text from your linked folder or Google Drive. The model will
+                  prioritize that material together with client context. You can leave the idea box empty and
+                  still generate—or add a short focus note if you want to steer the doc.
+                </p>
+              </div>
+            )}
+
             <div className="card p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
                 Input Method
@@ -232,7 +267,11 @@ export default function NewDocumentPage() {
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Describe your product idea in one or two sentences..."
+                  placeholder={
+                    hasRichReference
+                      ? 'Optional: one line to steer the doc (e.g. audience or release). Leave empty to draft only from project + synced folder text.'
+                      : 'Describe your product idea in one or two sentences...'
+                  }
                   className="textarea h-32"
                 />
               )}
@@ -241,7 +280,11 @@ export default function NewDocumentPage() {
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Paste your meeting notes or research findings here..."
+                  placeholder={
+                    hasRichReference
+                      ? 'Optional: extra notes on top of synced materials. Leave empty to rely on project context and folder imports.'
+                      : 'Paste your meeting notes or research findings here...'
+                  }
                   className="textarea h-32"
                 />
               )}
