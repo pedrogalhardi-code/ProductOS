@@ -1,0 +1,215 @@
+// ProductOS — Prisma Schema
+// Production: PostgreSQL | Dev: SQLite (swap datasource provider)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum DocumentType {
+  PRD
+  USER_STORIES
+  TECHNICAL_SPEC
+  PRODUCT_BRIEF
+  ROADMAP
+  OKRS
+}
+
+enum DocumentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  ARCHIVED
+}
+
+enum IntegrationService {
+  JIRA
+  CONFLUENCE
+  SLACK
+  FIGMA
+  GOOGLE_DRIVE
+}
+
+enum AuditAction {
+  CREATED
+  UPDATED
+  DELETED
+  EXPORTED
+  SHARED
+  STATUS_CHANGED
+  PUSHED_TO_JIRA
+  PUSHED_TO_CONFLUENCE
+  PUSHED_TO_GDRIVE
+  SLACK_NOTIFIED
+  REVIEWED
+  COMMENTED
+  VERSION_RESTORED
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      Role     @default(EDITOR)
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  authoredDocuments Document[]     @relation("DocumentAuthor")
+  versions          DocVersion[]
+  comments          Comment[]
+  auditLogs         AuditLog[]
+  projectMembers    ProjectMember[]
+  integrations      Integration[]
+  settings          UserSettings?
+
+  @@map("users")
+}
+
+model UserSettings {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  language       String   @default("en")
+  tone           String   @default("Formal")
+  systemPromptPrefix String? // Global Telus Digital defaults prepended to every AI call
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  clientContext String   // Injected into every AI call for this project
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  documents     Document[]
+  members       ProjectMember[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      Role     @default(VIEWER)
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model Document {
+  id               String         @id @default(cuid())
+  title            String
+  type             DocumentType
+  status           DocumentStatus @default(DRAFT)
+  content          String         @default("") // JSON string (TipTap doc format)
+  projectId        String
+  authorId         String
+  currentVersionId String?        // Set after first save
+  jiraEpicKey      String?        // Linked Jira Epic
+  figmaFileUrl     String?        // Linked Figma file
+  figmaFileName    String?
+  figmaLastModified String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  // Relations
+  project  Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author   User         @relation("DocumentAuthor", fields: [authorId], references: [id])
+  versions DocVersion[]
+  comments Comment[]
+  auditLogs AuditLog[]
+
+  @@map("documents")
+}
+
+model DocVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  content    String   // JSON string snapshot
+  label      String?  // Optional human label e.g. "v1.2 — after CPO review"
+  createdAt  DateTime @default(now())
+  authorId   String
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id])
+
+  @@map("doc_versions")
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  documentId String
+  authorId   String
+  anchorId   String   // ID of the TipTap node / section this is anchored to
+  body       String
+  resolved   Boolean  @default(false)
+  parentId   String?  // For threaded replies
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  document Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  replies  Comment[] @relation("CommentReplies")
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+
+  @@map("comments")
+}
+
+model Integration {
+  id           String             @id @default(cuid())
+  userId       String
+  service      IntegrationService
+  accessToken  String             // Encrypted at rest
+  refreshToken String?            // Encrypted at rest
+  expiresAt    DateTime?
+  metadata     String?            // JSON: workspaceId, botUserId, etc.
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, service])
+  @@map("integrations")
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String
+  documentId String?
+  action     AuditAction
+  metadata   String?     // JSON: additional context
+  timestamp  DateTime    @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}

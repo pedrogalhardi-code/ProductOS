@@ -1,0 +1,241 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ProductOS API",
+    "description": "AI-powered PRD Builder for Telus Digital internal product management teams",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Telus Digital",
+      "url": "https://telus.com"
+    }
+  },
+  "servers": [
+    { "url": "http://localhost:3001/api", "description": "Development" },
+    { "url": "https://api.productos.telus.com/api", "description": "Production" }
+  ],
+  "security": [{ "bearerAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "clientContext": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "documentCount": { "type": "integer" },
+          "memberCount": { "type": "integer" }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["PRD", "USER_STORIES", "TECHNICAL_SPEC", "PRODUCT_BRIEF", "ROADMAP", "OKRS"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["DRAFT", "IN_REVIEW", "APPROVED", "ARCHIVED"]
+          },
+          "content": { "type": "string" },
+          "projectId": { "type": "string" },
+          "authorId": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register a new user",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "name", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "name": { "type": "string" },
+                  "password": { "type": "string", "minLength": 8 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "User registered" },
+          "409": { "description": "Email already registered" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login successful — returns JWT token" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": ["Projects"],
+        "summary": "List all projects for the authenticated user",
+        "responses": {
+          "200": {
+            "description": "List of projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Projects"],
+        "summary": "Create a new project",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "clientContext"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "clientContext": { "type": "string", "minLength": 10 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Project created" }
+        }
+      }
+    },
+    "/documents/generate": {
+      "post": {
+        "tags": ["Documents", "AI"],
+        "summary": "Stream AI document generation (SSE)",
+        "description": "Rate limited: 20 requests per user per hour. Returns a Server-Sent Events stream.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["projectId", "documentType", "input", "inputType"],
+                "properties": {
+                  "projectId": { "type": "string" },
+                  "documentType": {
+                    "type": "string",
+                    "enum": ["PRD", "USER_STORIES", "TECHNICAL_SPEC", "PRODUCT_BRIEF", "ROADMAP", "OKRS"]
+                  },
+                  "input": { "type": "string", "minLength": 5 },
+                  "inputType": { "type": "string", "enum": ["idea", "notes", "form", "url"] },
+                  "language": { "type": "string", "default": "en" },
+                  "tone": { "type": "string", "enum": ["Formal", "Startup", "Technical"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream — events: start | delta | section | done | error",
+            "content": { "text/event-stream": {} }
+          },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/documents/{id}/review": {
+      "post": {
+        "tags": ["Documents", "AI"],
+        "summary": "Stream CPO review for a document (SSE)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "SSE stream of CPO review sections" },
+          "404": { "description": "Document not found" },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/integrations/jira/push": {
+      "post": {
+        "tags": ["Integrations"],
+        "summary": "Push user stories to Jira",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["projectKey", "stories"],
+                "properties": {
+                  "projectKey": { "type": "string" },
+                  "epicName": { "type": "string" },
+                  "stories": { "type": "array" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Stories created in Jira" }
+        }
+      }
+    }
+  }
+}

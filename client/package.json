@@ -1,0 +1,49 @@
+{
+  "name": "@productos/client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@tiptap/core": "^2.8.0",
+    "@tiptap/extension-code-block": "^2.8.0",
+    "@tiptap/extension-code-block-lowlight": "^2.8.0",
+    "@tiptap/extension-collaboration": "^2.8.0",
+    "@tiptap/extension-color": "^2.8.0",
+    "@tiptap/extension-document": "^2.8.0",
+    "@tiptap/extension-heading": "^2.8.0",
+    "@tiptap/extension-highlight": "^2.8.0",
+    "@tiptap/extension-link": "^2.8.0",
+    "@tiptap/extension-placeholder": "^2.8.0",
+    "@tiptap/extension-text-style": "^2.8.0",
+    "@tiptap/extension-typography": "^2.8.0",
+    "@tiptap/pm": "^2.8.0",
+    "@tiptap/react": "^2.8.0",
+    "@tiptap/starter-kit": "^2.8.0",
+    "axios": "^1.7.7",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.454.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.27.0",
+    "tailwind-merge": "^2.5.3",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.9"
+  }
+}

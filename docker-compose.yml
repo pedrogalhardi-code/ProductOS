@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: productos-db
+    environment:
+      POSTGRES_DB: productos_dev
+      POSTGRES_USER: productos
+      POSTGRES_PASSWORD: productos_secret
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U productos -d productos_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: productos-server
+    env_file: ./server/.env
+    environment:
+      DATABASE_URL: postgresql://productos:productos_secret@postgres:5432/productos_dev
+      NODE_ENV: production
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server/logs:/app/logs
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: productos-client
+    ports:
+      - '80:80'
+    depends_on:
+      - server
+
+volumes:
+  postgres_data:
