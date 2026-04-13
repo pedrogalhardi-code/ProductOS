@@ -319,6 +319,13 @@ export default function SettingsPage() {
                               </span>
                             )}
                           </p>
+                          {integration.service === 'GOOGLE_DRIVE' && (
+                            <p className="text-xs text-gray-500 mt-2 max-w-md">
+                              Used to sync an existing Drive folder into a project&apos;s AI reference context
+                              (read-only to your files) and to export Google Docs. Reconnect after changing OAuth
+                              scopes in Google Cloud Console.
+                            </p>
+                          )}
                         </div>
                       </div>
 

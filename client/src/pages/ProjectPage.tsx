@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useProjectStore } from '../stores/projectStore';
 import { useDocumentStore } from '../stores/documentStore';
-import { projects, documents } from '../services/api';
+import { projects, documents, integrations } from '../services/api';
 import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
+import DriveFolderPickerModal from '../components/project/DriveFolderPickerModal';
+import { pickAndScanLocalContextFolder } from '../lib/scanLocalContextFolder';
 import {
   ArrowLeft,
   Plus,
@@ -12,8 +14,12 @@ import {
   Trash2,
   ChevronDown,
   Copy,
+  FolderOpen,
+  Cloud,
+  Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import type { ProjectDto } from '@shared/types';
 
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,9 +30,15 @@ export default function ProjectPage() {
   const [isContextExpanded, setIsContextExpanded] = useState(false);
   const [filterType, setFilterType] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [syncingDrive, setSyncingDrive] = useState(false);
+  const [scanningLocal, setScanningLocal] = useState(false);
+  const [clearingRef, setClearingRef] = useState(false);
 
   const currentProject = useProjectStore((s) => s.currentProject);
   const setCurrentProject = useProjectStore((s) => s.setCurrentProject);
+  const updateProjectInStore = useProjectStore((s) => s.updateProject);
   const docList = useDocumentStore((s) => s.documents);
   const setDocuments = useDocumentStore((s) => s.setDocuments);
 
@@ -53,6 +65,22 @@ export default function ProjectPage() {
     loadProject();
   }, [id, setCurrentProject, setDocuments, navigate]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await integrations.list();
+        const row = res.data.data?.find((i) => i.service === 'GOOGLE_DRIVE');
+        if (!cancelled) setDriveConnected(!!row?.connected);
+      } catch {
+        if (!cancelled) setDriveConnected(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const projectDocs = docList.filter((d) => d.projectId === id);
   let filteredDocs = projectDocs;
 
@@ -74,6 +102,69 @@ export default function ProjectPage() {
       toast.error('Failed to delete project');
     } finally {
       setIsDeleteModalOpen(false);
+    }
+  };
+
+  const applyProjectUpdate = (data: ProjectDto) => {
+    setCurrentProject(data);
+    updateProjectInStore(data);
+  };
+
+  const handleLocalFolderReference = async () => {
+    if (!id) return;
+    setScanningLocal(true);
+    try {
+      const result = await pickAndScanLocalContextFolder();
+      if (!result) return;
+      if (!result.text.trim()) {
+        toast.error('No readable text files found in that folder');
+        return;
+      }
+      const res = await projects.update(id, {
+        referenceContextMaterial: result.text,
+        localContextFolderLabel: result.label,
+        driveContextFolderId: null,
+        driveContextFolderName: null,
+      });
+      applyProjectUpdate(res.data.data);
+      toast.success(`Reference updated from folder “${result.label}”`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not read folder');
+    } finally {
+      setScanningLocal(false);
+    }
+  };
+
+  const handleDriveFolderChosen = async (folderId: string) => {
+    if (!id) return;
+    setSyncingDrive(true);
+    try {
+      const res = await integrations.googleDriveSyncProjectFolder({ projectId: id, folderId });
+      applyProjectUpdate(res.data.data);
+      toast.success('Google Drive folder synced into project reference');
+    } catch {
+      toast.error('Drive sync failed. Reconnect Google Drive in Settings if needed.');
+    } finally {
+      setSyncingDrive(false);
+    }
+  };
+
+  const handleClearReference = async () => {
+    if (!id) return;
+    setClearingRef(true);
+    try {
+      const res = await projects.update(id, {
+        referenceContextMaterial: '',
+        localContextFolderLabel: null,
+        driveContextFolderId: null,
+        driveContextFolderName: null,
+      });
+      applyProjectUpdate(res.data.data);
+      toast.success('Reference materials cleared');
+    } catch {
+      toast.error('Failed to clear reference');
+    } finally {
+      setClearingRef(false);
     }
   };
 
@@ -205,6 +296,81 @@ export default function ProjectPage() {
         </div>
       </Modal>
 
+      <DriveFolderPickerModal
+        isOpen={drivePickerOpen}
+        onClose={() => setDrivePickerOpen(false)}
+        onSelectFolder={(folderId) => {
+          void handleDriveFolderChosen(folderId);
+        }}
+      />
+
+      <div className="card p-6 mb-8">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">Reference materials</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Optional text layered on top of client context for AI. Import from a folder on this device (read in
+          your browser) or sync from a Google Drive folder (requires Drive connected in Settings).
+        </p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            type="button"
+            disabled={scanningLocal}
+            onClick={() => void handleLocalFolderReference()}
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            {scanningLocal ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
+            {scanningLocal ? 'Reading…' : 'Choose local folder…'}
+          </button>
+          {driveConnected ? (
+            <button
+              type="button"
+              disabled={syncingDrive}
+              onClick={() => setDrivePickerOpen(true)}
+              className="btn-secondary inline-flex items-center gap-2"
+            >
+              {syncingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
+              {syncingDrive ? 'Syncing…' : 'Sync from Google Drive…'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate('/settings')}
+              className="btn-secondary inline-flex items-center gap-2 text-gray-600"
+            >
+              <Cloud className="w-4 h-4" />
+              Connect Google Drive (Settings)
+            </button>
+          )}
+          {(currentProject.referenceContextLength ?? 0) > 0 && (
+            <button
+              type="button"
+              disabled={clearingRef}
+              onClick={() => void handleClearReference()}
+              className="text-sm text-red-600 hover:underline self-center"
+            >
+              {clearingRef ? 'Clearing…' : 'Clear reference materials'}
+            </button>
+          )}
+        </div>
+        {(currentProject.referenceContextLength ?? 0) > 0 ? (
+          <ul className="text-xs text-gray-600 space-y-1">
+            <li>
+              Reference text: {(currentProject.referenceContextLength ?? 0).toLocaleString()} characters
+            </li>
+            {currentProject.localContextFolderLabel ? (
+              <li>Local folder: {currentProject.localContextFolderLabel}</li>
+            ) : null}
+            {currentProject.driveContextFolderName ? (
+              <li>Drive folder: {currentProject.driveContextFolderName}</li>
+            ) : null}
+            {currentProject.referenceContextSyncedAt ? (
+              <li>Last synced: {new Date(currentProject.referenceContextSyncedAt).toLocaleString()}</li>
+            ) : null}
+          </ul>
+        ) : (
+          <p className="text-xs text-gray-500">No reference materials loaded yet.</p>
+        )}
+      </div>
+
       <div className="card p-6 mb-8">
         <button
           onClick={() => setIsContextExpanded(!isContextExpanded)}
@@ -222,6 +388,12 @@ export default function ProjectPage() {
 
         {isContextExpanded && (
           <div className="mt-4 pt-4 border-t border-gray-200">
+            {(currentProject.referenceContextLength ?? 0) > 0 && (
+              <p className="text-xs text-gray-500 mb-3">
+                This project also includes {(currentProject.referenceContextLength ?? 0).toLocaleString()}{' '}
+                characters of reference text (local folder or Google Drive), merged into AI prompts.
+              </p>
+            )}
             <p className="text-gray-700 whitespace-pre-line">
               {currentProject.clientContext}
             </p>

@@ -5,16 +5,26 @@ import { logAudit } from '../services/auditService';
 import { AppError } from '../middleware/errorHandler';
 import { AuditAction } from '../types/enums';
 
+const MAX_REFERENCE_CONTEXT_CHARS = 120_000;
+
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().optional(),
   clientContext: z.string().min(10, 'Client context must be at least 10 characters'),
+  referenceContextMaterial: z.string().max(MAX_REFERENCE_CONTEXT_CHARS).optional(),
+  driveContextFolderId: z.string().optional().nullable(),
+  driveContextFolderName: z.string().max(500).optional().nullable(),
+  localContextFolderLabel: z.string().max(500).optional().nullable(),
 });
 
 const UpdateProjectSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().optional(),
   clientContext: z.string().min(10).optional(),
+  referenceContextMaterial: z.string().max(MAX_REFERENCE_CONTEXT_CHARS).optional(),
+  driveContextFolderId: z.string().optional().nullable(),
+  driveContextFolderName: z.string().max(500).optional().nullable(),
+  localContextFolderLabel: z.string().max(500).optional().nullable(),
 });
 
 export async function listProjects(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -25,7 +35,18 @@ export async function listProjects(req: Request, res: Response, next: NextFuncti
       where: {
         members: { some: { userId } },
       },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        clientContext: true,
+        referenceContextLength: true,
+        driveContextFolderId: true,
+        driveContextFolderName: true,
+        localContextFolderLabel: true,
+        referenceContextSyncedAt: true,
+        createdAt: true,
+        updatedAt: true,
         _count: { select: { documents: true, members: true } },
       },
       orderBy: { updatedAt: 'desc' },
@@ -37,6 +58,12 @@ export async function listProjects(req: Request, res: Response, next: NextFuncti
         name: p.name,
         description: p.description,
         clientContext: p.clientContext,
+        referenceContextLength: p.referenceContextLength,
+        hasReferenceMaterials: p.referenceContextLength > 0,
+        driveContextFolderId: p.driveContextFolderId,
+        driveContextFolderName: p.driveContextFolderName,
+        localContextFolderLabel: p.localContextFolderLabel,
+        referenceContextSyncedAt: p.referenceContextSyncedAt?.toISOString() ?? null,
         createdAt: p.createdAt.toISOString(),
         updatedAt: p.updatedAt.toISOString(),
         documentCount: p._count.documents,
@@ -70,6 +97,8 @@ export async function getProject(req: Request, res: Response, next: NextFunction
         ...project,
         createdAt: project.createdAt.toISOString(),
         updatedAt: project.updatedAt.toISOString(),
+        referenceContextSyncedAt: project.referenceContextSyncedAt?.toISOString() ?? null,
+        hasReferenceMaterials: project.referenceContextLength > 0,
         documentCount: project._count.documents,
         members: project.members.map((m) => ({
           ...m,
@@ -87,12 +116,20 @@ export async function createProject(req: Request, res: Response, next: NextFunct
   try {
     const userId = req.userId!;
     const body = CreateProjectSchema.parse(req.body);
+    const ref = (body.referenceContextMaterial ?? '').slice(0, MAX_REFERENCE_CONTEXT_CHARS);
+    const hasRef = ref.trim().length > 0;
 
     const project = await prisma.project.create({
       data: {
         name: body.name,
         description: body.description,
         clientContext: body.clientContext,
+        referenceContextMaterial: ref,
+        referenceContextLength: ref.length,
+        driveContextFolderId: body.driveContextFolderId ?? null,
+        driveContextFolderName: body.driveContextFolderName ?? null,
+        localContextFolderLabel: body.localContextFolderLabel ?? null,
+        referenceContextSyncedAt: hasRef ? new Date() : null,
         members: {
           create: { userId, role: 'ADMIN' },
         },
@@ -106,6 +143,8 @@ export async function createProject(req: Request, res: Response, next: NextFunct
         ...project,
         createdAt: project.createdAt.toISOString(),
         updatedAt: project.updatedAt.toISOString(),
+        referenceContextSyncedAt: project.referenceContextSyncedAt?.toISOString() ?? null,
+        hasReferenceMaterials: project.referenceContextLength > 0,
       },
     });
   } catch (error) {
@@ -127,9 +166,27 @@ export async function updateProject(req: Request, res: Response, next: NextFunct
       throw new AppError(403, 'Insufficient permissions to update this project');
     }
 
+    const data: Record<string, unknown> = {};
+    if (body.name !== undefined) data.name = body.name;
+    if (body.description !== undefined) data.description = body.description;
+    if (body.clientContext !== undefined) data.clientContext = body.clientContext;
+    if (body.driveContextFolderId !== undefined) data.driveContextFolderId = body.driveContextFolderId;
+    if (body.driveContextFolderName !== undefined) data.driveContextFolderName = body.driveContextFolderName;
+    if (body.localContextFolderLabel !== undefined) data.localContextFolderLabel = body.localContextFolderLabel;
+    if (body.referenceContextMaterial !== undefined) {
+      const ref = body.referenceContextMaterial.slice(0, MAX_REFERENCE_CONTEXT_CHARS);
+      data.referenceContextMaterial = ref;
+      data.referenceContextLength = ref.length;
+      data.referenceContextSyncedAt = ref.trim().length > 0 ? new Date() : null;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new AppError(400, 'No fields to update');
+    }
+
     const project = await prisma.project.update({
       where: { id },
-      data: body,
+      data: data as never,
     });
 
     await logAudit({ userId, action: AuditAction.UPDATED, metadata: { projectId: id } });
@@ -139,6 +196,8 @@ export async function updateProject(req: Request, res: Response, next: NextFunct
         ...project,
         createdAt: project.createdAt.toISOString(),
         updatedAt: project.updatedAt.toISOString(),
+        referenceContextSyncedAt: project.referenceContextSyncedAt?.toISOString() ?? null,
+        hasReferenceMaterials: project.referenceContextLength > 0,
       },
     });
   } catch (error) {

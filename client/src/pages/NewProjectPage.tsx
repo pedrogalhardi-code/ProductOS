@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProjectStore } from '../stores/projectStore';
 import { projects } from '../services/api';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { pickAndScanLocalContextFolder } from '../lib/scanLocalContextFolder';
+import { ArrowLeft, ChevronRight, FolderOpen, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function NewProjectPage() {
@@ -16,6 +17,9 @@ export default function NewProjectPage() {
     description: '',
     clientContext: '',
   });
+  const [referenceContextMaterial, setReferenceContextMaterial] = useState('');
+  const [localContextFolderLabel, setLocalContextFolderLabel] = useState<string | null>(null);
+  const [scanningFolder, setScanningFolder] = useState(false);
 
   const handleInputChange = (
     field: keyof typeof formData,
@@ -36,6 +40,12 @@ export default function NewProjectPage() {
         name: formData.name,
         description: formData.description,
         clientContext: formData.clientContext,
+        ...(referenceContextMaterial.trim()
+          ? {
+              referenceContextMaterial: referenceContextMaterial.trim(),
+              localContextFolderLabel,
+            }
+          : {}),
       });
 
       const newProject = response.data.data;
@@ -136,6 +146,65 @@ export default function NewProjectPage() {
                 </p>
               </div>
 
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
+                <p className="text-sm font-medium text-gray-900">Reference folder (optional)</p>
+                <p className="text-xs text-gray-600">
+                  Choose a folder on this computer. Text-like files are read in the browser and sent with the
+                  project as extra context (nothing is uploaded folder-by-folder after save). Use Google Drive
+                  from the project page after the project exists.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={scanningFolder}
+                    onClick={async () => {
+                      setScanningFolder(true);
+                      try {
+                        const result = await pickAndScanLocalContextFolder();
+                        if (!result) return;
+                        if (!result.text.trim()) {
+                          toast.error('No readable text files found in that folder');
+                          return;
+                        }
+                        setReferenceContextMaterial(result.text);
+                        setLocalContextFolderLabel(result.label);
+                        toast.success(`Imported from “${result.label}”`);
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'Could not read folder');
+                      } finally {
+                        setScanningFolder(false);
+                      }
+                    }}
+                    className="btn-secondary inline-flex items-center gap-2"
+                  >
+                    {scanningFolder ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <FolderOpen className="w-4 h-4" />
+                    )}
+                    {scanningFolder ? 'Reading…' : 'Choose local folder…'}
+                  </button>
+                  {referenceContextMaterial ? (
+                    <button
+                      type="button"
+                      className="text-sm text-red-600 hover:underline"
+                      onClick={() => {
+                        setReferenceContextMaterial('');
+                        setLocalContextFolderLabel(null);
+                      }}
+                    >
+                      Clear imported folder
+                    </button>
+                  ) : null}
+                </div>
+                {referenceContextMaterial ? (
+                  <p className="text-xs text-gray-600">
+                    Linked: <span className="font-medium">{localContextFolderLabel}</span> —{' '}
+                    {referenceContextMaterial.length.toLocaleString()} characters of reference text
+                  </p>
+                ) : null}
+              </div>
+
               <div className="flex gap-3">
                 <button
                   onClick={() => setStep(1)}
@@ -193,7 +262,21 @@ export default function NewProjectPage() {
                 </div>
               )}
 
-              {!formData.name && !formData.description && !formData.clientContext && (
+              {referenceContextMaterial ? (
+                <div>
+                  <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">
+                    Local folder reference
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    {localContextFolderLabel} — {referenceContextMaterial.length.toLocaleString()} chars
+                  </p>
+                </div>
+              ) : null}
+
+              {!formData.name &&
+                !formData.description &&
+                !formData.clientContext &&
+                !referenceContextMaterial && (
                 <div className="py-8 text-center">
                   <p className="text-sm text-gray-400">
                     Fill in the form to see preview

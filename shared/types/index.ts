@@ -21,6 +21,12 @@ export type IntegrationService =
 
 export type ExportFormat = 'PDF' | 'MARKDOWN' | 'CONFLUENCE' | 'GOOGLE_DRIVE';
 
+export interface DriveBrowseItemDto {
+  id: string;
+  name: string;
+  mimeType: string;
+}
+
 export type Tone = 'Formal' | 'Startup' | 'Technical';
 
 // ─── API Payload Types ────────────────────────────────────────────────────────
@@ -42,12 +48,21 @@ export interface CreateProjectPayload {
   name: string;
   description?: string;
   clientContext: string;
+  /** Plain text from a local folder scan or other import — merged into AI context */
+  referenceContextMaterial?: string;
+  driveContextFolderId?: string | null;
+  driveContextFolderName?: string | null;
+  localContextFolderLabel?: string | null;
 }
 
 export interface UpdateProjectPayload {
   name?: string;
   description?: string;
   clientContext?: string;
+  referenceContextMaterial?: string;
+  driveContextFolderId?: string | null;
+  driveContextFolderName?: string | null;
+  localContextFolderLabel?: string | null;
 }
 
 export interface CreateDocumentPayload {
@@ -137,6 +152,13 @@ export interface ProjectDto {
   name: string;
   description?: string | null;
   clientContext: string;
+  referenceContextMaterial?: string | null;
+  referenceContextLength?: number;
+  hasReferenceMaterials?: boolean;
+  driveContextFolderId?: string | null;
+  driveContextFolderName?: string | null;
+  localContextFolderLabel?: string | null;
+  referenceContextSyncedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   memberCount?: number;

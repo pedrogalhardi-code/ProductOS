@@ -17,6 +17,7 @@ import type {
   PushToJiraPayload,
   PostToSlackPayload,
   UpdateSettingsPayload,
+  DriveBrowseItemDto,
   PaginatedResponse,
   ApiResponse,
 } from '@shared/types';
@@ -247,6 +248,12 @@ export const integrations = {
   confluenceSpaces: () => api.get('/integrations/confluence/spaces'),
   slackChannels: () => api.get('/integrations/slack/channels'),
   postToSlack: (payload: PostToSlackPayload) => api.post('/integrations/slack/post', payload),
+  googleDriveBrowse: (parentId?: string) =>
+    api.get<ApiResponse<{ items: DriveBrowseItemDto[] }>>('/integrations/google-drive/browse', {
+      params: parentId ? { parentId } : {},
+    }),
+  googleDriveSyncProjectFolder: (payload: { projectId: string; folderId: string }) =>
+    api.post<ApiResponse<ProjectDto>>('/integrations/google-drive/sync-project-folder', payload),
 };
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

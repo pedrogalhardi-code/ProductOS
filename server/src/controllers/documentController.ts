@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../services/db';
 import { logAudit } from '../services/auditService';
 import { streamDocumentGeneration, streamCPOReview } from '../services/aiService';
+import { buildFullClientContext } from '../services/projectContext';
 import { AppError } from '../middleware/errorHandler';
 import { AuditAction, DocumentType, DocumentStatus } from '../types/enums';
 
@@ -224,7 +225,7 @@ export async function generateDocument(req: Request, res: Response, next: NextFu
       {
         input: body.input,
         documentType: body.documentType,
-        clientContext: project.clientContext,
+        clientContext: buildFullClientContext(project),
         language: body.language ?? settings?.language ?? 'en',
         tone: (body.tone ?? settings?.tone ?? 'Formal') as 'Formal' | 'Startup' | 'Technical',
       },
@@ -252,7 +253,7 @@ export async function reviewDocument(req: Request, res: Response, next: NextFunc
     await streamCPOReview(
       {
         documentContent: doc.content,
-        clientContext: doc.project.clientContext,
+        clientContext: buildFullClientContext(doc.project),
       },
       res
     );

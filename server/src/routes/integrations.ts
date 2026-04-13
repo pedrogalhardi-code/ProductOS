@@ -5,6 +5,11 @@ import { AppError } from '../middleware/errorHandler';
 import { pushStoriesToJira, getJiraEpics } from '../services/integrations/jiraService';
 import { getConfluenceSpaces } from '../services/integrations/confluenceService';
 import { postDocumentSummary, getSlackChannels } from '../services/integrations/slackService';
+import {
+  assertDriveFolder,
+  browseDriveFolder,
+  buildDriveFolderReferenceText,
+} from '../services/integrations/googleDriveService';
 import { logAudit } from '../services/auditService';
 import { AuditAction } from '../types/enums';
 
@@ -30,6 +35,71 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
           metadata: found?.metadata ? JSON.parse(found.metadata) : null,
         };
       }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─── Google Drive (browse + project reference folder) ─────────────────────────
+
+router.get('/google-drive/browse', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.userId!;
+    const parentId = typeof req.query.parentId === 'string' && req.query.parentId.length > 0 ? req.query.parentId : 'root';
+    const { items } = await browseDriveFolder(userId, parentId);
+    res.json({ data: { items } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/google-drive/sync-project-folder', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.userId!;
+    const body = z
+      .object({
+        projectId: z.string().cuid(),
+        folderId: z.string().min(1),
+      })
+      .parse(req.body);
+
+    const member = await prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId: body.projectId, userId } },
+    });
+    if (!member || member.role === 'VIEWER') {
+      throw new AppError(403, 'Insufficient permissions to update this project');
+    }
+
+    await assertDriveFolder(userId, body.folderId);
+    const { text, folderName } = await buildDriveFolderReferenceText(userId, body.folderId);
+
+    const project = await prisma.project.update({
+      where: { id: body.projectId },
+      data: {
+        referenceContextMaterial: text,
+        referenceContextLength: text.length,
+        driveContextFolderId: body.folderId,
+        driveContextFolderName: folderName,
+        localContextFolderLabel: null,
+        referenceContextSyncedAt: new Date(),
+      },
+    });
+
+    await logAudit({
+      userId,
+      action: AuditAction.UPDATED,
+      metadata: { projectId: body.projectId, driveReferenceSync: true },
+    });
+
+    res.json({
+      data: {
+        ...project,
+        createdAt: project.createdAt.toISOString(),
+        updatedAt: project.updatedAt.toISOString(),
+        referenceContextSyncedAt: project.referenceContextSyncedAt?.toISOString() ?? null,
+        hasReferenceMaterials: project.referenceContextLength > 0,
+      },
     });
   } catch (error) {
     next(error);
