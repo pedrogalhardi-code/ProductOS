@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { useAuthStore } from '../stores/authStore';
 import { auth } from '../services/api';
 import toast from 'react-hot-toast';
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User as UserIcon } from 'lucide-react';
+import type { Role } from '@shared/types';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
 
-  const [isLogin, setIsLogin] = useState(true);
+  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,67 +24,102 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      let response;
-
-      if (isLogin) {
-        response = await auth.login(email, password);
-      } else {
-        response = await auth.register(email, name, password);
-      }
+      const response = isSignUp
+        ? await auth.register(email, name, password)
+        : await auth.login(email, password);
 
       const { token, user } = response.data.data;
-      setAuth(token, { ...user, role: user.role as import('@shared/types').Role, createdAt: new Date().toISOString() });
-      toast.success(isLogin ? 'Logged in successfully!' : 'Account created!');
+      setAuth(token, {
+        ...user,
+        role: user.role as Role,
+        createdAt: new Date().toISOString(),
+      });
+      toast.success(isSignUp ? 'Account created!' : 'Logged in successfully!');
       navigate('/dashboard');
     } catch (err: unknown) {
-      const errorMessage =
-        err instanceof Error ? err.message : 'Authentication failed';
-      setError(errorMessage);
-      toast.error(errorMessage);
+      const msg = err instanceof Error ? err.message : 'Authentication failed';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-telus-purple/5 via-white to-telus-green/5 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="card p-8">
-          <div className="flex items-center justify-center gap-2 mb-8">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-telus-purple to-telus-green flex items-center justify-center text-white font-bold">
-              P
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{
+        backgroundImage:
+          'linear-gradient(135deg, rgba(75,40,109,0.05), rgba(0,166,81,0.05))',
+      }}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md"
+      >
+        <div
+          className="bg-white rounded-2xl shadow-lg p-8"
+          style={{ border: '1px solid var(--border)' }}
+        >
+          {/* Logo */}
+          <div className="flex justify-center mb-8">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl gradient-mark flex items-center justify-center shadow-lg">
+                <span className="text-white font-bold text-xl">P</span>
+              </div>
+              <span className="font-bold text-2xl gradient-text">ProductOS</span>
             </div>
-            <h1 className="text-2xl font-bold text-telus-purple">ProductOS</h1>
           </div>
 
-          <h2 className="text-xl font-semibold text-gray-900 mb-6 text-center">
-            {isLogin ? 'Welcome Back' : 'Create Account'}
-          </h2>
+          {/* Heading */}
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-semibold mb-2">
+              {isSignUp ? 'Create Account' : 'Welcome Back'}
+            </h1>
+            <p style={{ color: 'var(--neutral-500)' }}>
+              {isSignUp
+                ? 'Sign up to start building better products'
+                : 'Sign in to continue to ProductOS'}
+            </p>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
+            {isSignUp && (
               <div>
                 <label className="label">Full Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="John Doe"
-                  className="input"
-                  required={!isLogin}
-                />
+                <div className="relative">
+                  <UserIcon
+                    size={18}
+                    className="absolute left-3 top-1/2 -translate-y-1/2"
+                    style={{ color: 'var(--neutral-400)' }}
+                  />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Jane Doe"
+                    className="input pl-10"
+                    required
+                  />
+                </div>
               </div>
             )}
 
             <div>
-              <label className="label">Email Address</label>
+              <label className="label">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--neutral-400)' }}
+                />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="you@company.com"
                   className="input pl-10"
                   required
                 />
@@ -93,26 +129,19 @@ export default function LoginPage() {
             <div>
               <label className="label">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--neutral-400)' }}
+                />
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="input pl-10 pr-10"
+                  className="input pl-10"
                   required
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
               </div>
             </div>
 
@@ -125,41 +154,40 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="btn-primary w-full justify-center mt-6"
+              className="w-full text-white py-3 rounded-lg hover:opacity-90 transition-opacity font-medium mt-6 disabled:opacity-50"
+              style={{ backgroundColor: 'var(--primary)' }}
             >
               {isLoading
-                ? 'Processing...'
-                : isLogin
-                  ? 'Sign In'
-                  : 'Create Account'}
+                ? 'Processing…'
+                : isSignUp
+                ? 'Create Account'
+                : 'Sign In'}
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-sm text-gray-600 text-center mb-3">
-              {isLogin
-                ? "Don't have an account?"
-                : 'Already have an account?'}
-            </p>
+          <div className="mt-6 text-center">
             <button
               onClick={() => {
-                setIsLogin(!isLogin);
+                setIsSignUp(!isSignUp);
                 setError('');
-                setEmail('');
-                setPassword('');
-                setName('');
               }}
-              className="btn-secondary w-full justify-center"
+              className="text-sm hover:underline"
+              style={{ color: 'var(--primary)' }}
             >
-              {isLogin ? 'Create Account' : 'Sign In'}
+              {isSignUp
+                ? 'Already have an account? Sign in'
+                : "Don't have an account? Sign up"}
             </button>
           </div>
         </div>
 
-        <p className="text-xs text-gray-500 text-center mt-8">
+        <p
+          className="text-xs text-center mt-6"
+          style={{ color: 'var(--neutral-500)' }}
+        >
           Part of Telus Digital AI Platform Suite
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

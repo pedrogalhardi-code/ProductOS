@@ -7,6 +7,10 @@ import Highlight from '@tiptap/extension-highlight';
 import Typography from '@tiptap/extension-typography';
 import Placeholder from '@tiptap/extension-placeholder';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
 import { common, createLowlight } from 'lowlight';
 import {
   Bold,
@@ -50,6 +54,10 @@ export default function RichEditor({
       Typography,
       Placeholder.configure({ placeholder }),
       CodeBlockLowlight.configure({ lowlight }),
+      Table.configure({ resizable: false, HTMLAttributes: { class: 'editor-table' } }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content,
     editable,
@@ -108,9 +116,9 @@ export default function RichEditor({
   );
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg border border-gray-200">
+    <div className="flex flex-col h-full bg-white rounded-lg border border-gray-200 overflow-hidden">
       {editable && (
-        <div className="flex items-center gap-1 px-4 py-3 border-b border-gray-200 bg-gray-50 flex-wrap">
+        <div className="flex items-center gap-1 px-4 py-3 border-b border-gray-200 bg-gray-50 flex-wrap flex-shrink-0">
           <button
             onClick={() => handleToolbarClick('bold')}
             className={`p-2 rounded transition ${
@@ -233,7 +241,7 @@ export default function RichEditor({
         </div>
       )}
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6 min-h-0">
         <EditorContent editor={editor} className="prose prose-sm max-w-none" />
       </div>
     </div>

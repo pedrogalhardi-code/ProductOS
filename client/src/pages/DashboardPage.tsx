@@ -1,14 +1,38 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { useDocumentStore } from '../stores/documentStore';
 import { useProjectStore } from '../stores/projectStore';
 import { documents, projects } from '../services/api';
 import Badge from '../components/ui/Badge';
-import { Plus, FileText, Folder, Clock } from 'lucide-react';
+import DocumentCardMenu from '../components/ui/DocumentCardMenu';
+import { FolderOpen, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
+import type { DocumentDto, ProjectDto } from '@shared/types';
+
+function formatRelative(dateStr: string) {
+  const date = new Date(dateStr);
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 60) return `${Math.max(1, mins)}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
+function initials(name?: string) {
+  if (!name) return 'U';
+  return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+}
+
+function docCountFor(project: ProjectDto, docs: DocumentDto[]) {
+  return docs.filter((d) => d.projectId === project.id).length;
+}
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
 
   const docList = useDocumentStore((s) => s.documents);
@@ -20,7 +44,7 @@ export default function DashboardPage() {
     const loadData = async () => {
       try {
         const [docRes, projRes] = await Promise.all([
-          documents.list({ limit: '10' }),
+          documents.list({ limit: '12' }),
           projects.list(),
         ]);
         setDocuments(docRes.data.data || []);
@@ -36,181 +60,170 @@ export default function DashboardPage() {
   }, [setDocuments, setProjects]);
 
   const recentDocs = docList.slice(0, 6);
-  const totalDocs = docList.length;
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor(diff / (1000 * 60));
-
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days === 1) return 'yesterday';
-    if (days < 30) return `${days}d ago`;
-
-    return date.toLocaleDateString();
-  };
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">Welcome back to ProductOS</p>
+          <h1 className="text-3xl font-semibold mb-2">Dashboard</h1>
+          <p style={{ color: 'var(--neutral-500)' }}>
+            Welcome back! Here's what's happening with your projects.
+          </p>
         </div>
-        <button
-          onClick={() => navigate('/projects/new')}
-          className="btn-primary"
-        >
-          <Plus className="w-4 h-4" />
-          New Project
-        </button>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Total Projects</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {projectList.length}
-              </p>
-            </div>
-            <Folder className="w-12 h-12 text-telus-purple/20" />
+        {/* Recent Documents */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Recent Documents</h2>
           </div>
-        </div>
 
-        <div className="card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Total Documents</p>
-              <p className="text-3xl font-bold text-gray-900">{totalDocs}</p>
-            </div>
-            <FileText className="w-12 h-12 text-telus-green/20" />
-          </div>
-        </div>
-
-        <div className="card p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">In Review</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {docList.filter((d) => d.status === 'IN_REVIEW').length}
-              </p>
-            </div>
-            <Clock className="w-12 h-12 text-amber-200" />
-          </div>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-6">
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Recent Documents
-            </h2>
-            <div className="space-y-3">
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-20 shimmer rounded-lg"
-                />
+                <div key={i} className="h-40 shimmer rounded-xl" />
               ))}
             </div>
-          </div>
-        </div>
-      ) : recentDocs.length === 0 ? (
-        <div className="card p-12 text-center">
-          <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            No documents yet
-          </h3>
-          <p className="text-gray-600 mb-6">
-            Create a new project and document to get started
-          </p>
-          <button
-            onClick={() => navigate('/projects/new')}
-            className="btn-primary mx-auto"
-          >
-            <Plus className="w-4 h-4" />
-            Create First Project
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="card p-6 mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Recent Documents
-            </h2>
+          ) : recentDocs.length === 0 ? (
+            <div className="card p-12 text-center">
+              <FileText
+                size={48}
+                className="mx-auto mb-4"
+                style={{ color: 'var(--neutral-300)' }}
+              />
+              <h3 className="text-lg font-semibold mb-2">No documents yet</h3>
+              <p style={{ color: 'var(--neutral-500)' }} className="mb-6">
+                Create a new project and document to get started.
+              </p>
+            </div>
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recentDocs.map((doc) => {
-                const proj = projectList.find((p) => p.id === doc.projectId);
+              {recentDocs.map((doc, index) => {
+                const project = projectList.find((p) => p.id === doc.projectId);
                 return (
-                  <button
+                  <motion.div
                     key={doc.id}
-                    onClick={() => navigate(`/documents/${doc.id}`)}
-                    className="card p-4 text-left hover:shadow-md transition group"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3, delay: index * 0.05 }}
                   >
-                    <div className="flex items-start justify-between mb-3">
-                      <Badge type="type" value={doc.type} />
-                      <Badge type="status" value={doc.status} />
-                    </div>
-                    <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2 group-hover:text-telus-purple transition">
-                      {doc.title}
-                    </h3>
-                    <p className="text-xs text-gray-500 mb-3">
-                      {proj?.name || 'Unknown Project'}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {formatDate(doc.updatedAt)}
-                    </p>
-                  </button>
+                    <Link
+                      to={`/documents/${doc.id}`}
+                      className="block bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow"
+                      style={{ border: '1px solid var(--border)' }}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex gap-2">
+                          <Badge type="type" value={doc.type} />
+                          <Badge type="status" value={doc.status} />
+                        </div>
+                        <DocumentCardMenu doc={doc} />
+                      </div>
+                      <h3 className="font-medium mb-2 line-clamp-2">{doc.title}</h3>
+                      <p
+                        className="text-sm mb-3"
+                        style={{ color: 'var(--neutral-500)' }}
+                      >
+                        {project?.name || 'Unknown Project'}
+                      </p>
+                      <div
+                        className="flex items-center justify-between text-xs"
+                        style={{ color: 'var(--neutral-500)' }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full gradient-mark flex items-center justify-center">
+                            <span className="text-white text-[10px] font-medium">
+                              {initials(doc.author?.name)}
+                            </span>
+                          </div>
+                          <span>{doc.author?.name || 'Unknown'}</span>
+                        </div>
+                        <span>{formatRelative(doc.updatedAt)}</span>
+                      </div>
+                    </Link>
+                  </motion.div>
                 );
               })}
             </div>
+          )}
+        </div>
+
+        {/* Your Projects */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Your Projects</h2>
+            <Link
+              to="/projects/new"
+              className="text-sm hover:underline"
+              style={{ color: 'var(--primary)' }}
+            >
+              Create Project
+            </Link>
           </div>
 
-          {projectList.length > 0 && (
-            <div className="card p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Your Projects
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {projectList.slice(0, 4).map((project) => {
-                  const projectDocCount = docList.filter(
-                    (d) => d.projectId === project.id
-                  ).length;
-
-                  return (
-                    <button
-                      key={project.id}
-                      onClick={() => navigate(`/projects/${project.id}`)}
-                      className="card p-4 text-left hover:shadow-md transition"
-                    >
-                      <h3 className="font-semibold text-gray-900 mb-2 line-clamp-1">
-                        {project.name}
-                      </h3>
-                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                        {project.clientContext.split('\n')[0] ||
-                          'No description'}
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-gray-500">
-                        <span>{projectDocCount} documents</span>
-                        <span>
-                          {formatDate(project.updatedAt)}
-                        </span>
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="h-40 shimmer rounded-xl" />
+              ))}
+            </div>
+          ) : projectList.length === 0 ? (
+            <div className="card p-12 text-center">
+              <FolderOpen
+                size={48}
+                className="mx-auto mb-4"
+                style={{ color: 'var(--neutral-300)' }}
+              />
+              <h3 className="text-lg font-semibold mb-2">No projects yet</h3>
+              <Link to="/projects/new" className="btn-primary mt-4 inline-flex">
+                Create First Project
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {projectList.slice(0, 6).map((project, index) => (
+                <motion.div
+                  key={project.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: index * 0.1 }}
+                >
+                  <Link
+                    to={`/projects/${project.id}`}
+                    className="block bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow"
+                    style={{ border: '1px solid var(--border)' }}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="w-12 h-12 rounded-lg gradient-mark flex items-center justify-center">
+                        <FolderOpen size={24} className="text-white" />
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
+                      <span className="px-2 py-1 rounded text-xs font-medium bg-green-50 text-green-700">
+                        Active
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">{project.name}</h3>
+                    <p
+                      className="text-sm mb-4 line-clamp-2"
+                      style={{ color: 'var(--neutral-500)' }}
+                    >
+                      {project.description ||
+                        project.clientContext?.split('\n')[0] ||
+                        'No description'}
+                    </p>
+                    <div
+                      className="flex items-center gap-2 text-sm"
+                      style={{ color: 'var(--neutral-600)' }}
+                    >
+                      <FileText size={16} />
+                      <span>{docCountFor(project, docList)} documents</span>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
             </div>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

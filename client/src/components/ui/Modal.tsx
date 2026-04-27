@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -40,18 +41,30 @@ export default function Modal({
     lg: 'w-[640px]',
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  // Portal into document.body so clicks (backdrop, cancel, close) never bubble
+  // up to ancestor elements like <Link> cards that would navigate away.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && onClose()}
         aria-label="Close modal"
       />
 
-      <div className={`relative card p-6 ${sizeClasses[size]} shadow-lg`}>
+      <div
+        className={`relative card p-6 ${sizeClasses[size]} shadow-lg`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <button
@@ -65,6 +78,7 @@ export default function Modal({
 
         <div>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

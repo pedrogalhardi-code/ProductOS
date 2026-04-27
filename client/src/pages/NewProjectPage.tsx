@@ -1,46 +1,47 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'motion/react';
+import { ArrowLeft, Upload, X, FileText } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useProjectStore } from '../stores/projectStore';
 import { projects } from '../services/api';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 export default function NewProjectPage() {
   const navigate = useNavigate();
   const addProject = useProjectStore((s) => s.addProject);
 
-  const [step, setStep] = useState(1);
+  const [name, setName] = useState('');
+  const [clientContext, setClientContext] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    clientContext: '',
-  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleInputChange = (
-    field: keyof typeof formData,
-    value: string
-  ) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setAttachedFiles((prev) => [...prev, ...files]);
   };
 
-  const handleCreateProject = async () => {
-    if (!formData.name.trim() || !formData.clientContext.trim()) {
-      toast.error('Please fill in all required fields');
+  const removeFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !clientContext.trim()) {
+      toast.error('Name and Client Context are required');
       return;
     }
 
     setIsLoading(true);
     try {
       const response = await projects.create({
-        name: formData.name,
-        description: formData.description,
-        clientContext: formData.clientContext,
+        name,
+        clientContext,
+        attachments: attachedFiles,
       });
-
       const newProject = response.data.data;
       addProject(newProject);
-      toast.success('Project created successfully!');
+      toast.success('Project created');
       navigate(`/projects/${newProject.id}`);
     } catch (err) {
       toast.error('Failed to create project');
@@ -50,159 +51,153 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-telus-purple hover:text-telus-purple/80 mb-8 transition"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back
-      </button>
+    <div className="p-8">
+      <div className="max-w-2xl mx-auto">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 mb-6 transition-colors"
+          style={{ color: 'var(--neutral-600)' }}
+        >
+          <ArrowLeft size={18} />
+          Back to Dashboard
+        </button>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Create New Project
-        </h1>
-        <p className="text-gray-600">
-          Step {step} of 2: {step === 1 ? 'Project Details' : 'Client Context'}
-        </p>
-      </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="bg-white rounded-2xl p-8 shadow-sm"
+          style={{ border: '1px solid var(--border)' }}
+        >
+          <h1 className="text-2xl font-semibold mb-2">Create New Project</h1>
+          <p style={{ color: 'var(--neutral-500)' }} className="mb-8">
+            Set up a new project to organize your product documents and specifications.
+          </p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="card p-8">
-          {step === 1 ? (
-            <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Project Details
-              </h2>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="label">Project Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Customer Portal Redesign"
+                className="input"
+                required
+              />
+            </div>
 
-              <div>
-                <label className="label">Project Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) =>
-                    handleInputChange('name', e.target.value)
-                  }
-                  placeholder="e.g., Telus Mobile App v2"
-                  className="input"
-                />
-              </div>
-
-              <div>
-                <label className="label">Description (Optional)</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) =>
-                    handleInputChange('description', e.target.value)
-                  }
-                  placeholder="Brief overview of the project..."
-                  className="textarea h-24"
-                />
-              </div>
-
-              <button
-                onClick={() => setStep(2)}
-                className="btn-primary w-full justify-center"
+            <div>
+              <label className="label">Client Context</label>
+              <textarea
+                value={clientContext}
+                onChange={(e) => setClientContext(e.target.value)}
+                placeholder="Provide context about your client, their industry, goals, and any specific requirements. This context will be used to enhance AI-generated documents for this project."
+                rows={8}
+                className="textarea"
+                required
+              />
+              <p
+                className="mt-2 text-xs"
+                style={{ color: 'var(--neutral-500)' }}
               >
-                Continue
-                <ChevronRight className="w-4 h-4" />
+                💡 This context is injected into every AI call for this project to ensure
+                consistency and relevance.
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Attach Documents (Optional)</label>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".pdf,.md,.txt"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full rounded-lg p-6 text-center transition-colors"
+                style={{ border: '2px dashed var(--border)' }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.borderColor = 'var(--primary)')
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.borderColor = 'var(--border)')
+                }
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <Upload size={32} style={{ color: 'var(--neutral-400)' }} />
+                  <div>
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: 'var(--primary)' }}
+                    >
+                      Upload PDF files
+                    </span>
+                    <p className="text-xs mt-1" style={{ color: 'var(--neutral-500)' }}>
+                      or drag and drop
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              {attachedFiles.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {attachedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 rounded-lg"
+                      style={{
+                        backgroundColor: 'var(--neutral-50)',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileText size={20} style={{ color: 'var(--primary)' }} />
+                        <div>
+                          <p className="text-sm font-medium">{file.name}</p>
+                          <p
+                            className="text-xs"
+                            style={{ color: 'var(--neutral-500)' }}
+                          >
+                            {(file.size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="p-1 rounded transition-colors hover:bg-gray-200"
+                      >
+                        <X size={16} style={{ color: 'var(--neutral-500)' }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard')}
+                className="btn-secondary flex-1 justify-center"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="btn-primary flex-1 justify-center"
+              >
+                {isLoading ? 'Creating…' : 'Create Project'}
               </button>
             </div>
-          ) : (
-            <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Client Context
-              </h2>
-
-              <div>
-                <label className="label">Client Context *</label>
-                <textarea
-                  value={formData.clientContext}
-                  onChange={(e) =>
-                    handleInputChange('clientContext', e.target.value)
-                  }
-                  placeholder={`Describe your client engagement:
-- Client name and industry
-- Business goals and KPIs
-- Target user types
-- Technical constraints
-- Regulatory/compliance requirements
-- Existing systems and integrations`}
-                  className="textarea h-48"
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  This context will guide AI-generated documents
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStep(1)}
-                  className="btn-secondary flex-1 justify-center"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleCreateProject}
-                  disabled={isLoading}
-                  className="btn-primary flex-1 justify-center"
-                >
-                  {isLoading ? 'Creating...' : 'Create Project'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="lg:block hidden">
-          <div className="card p-6 bg-gradient-to-br from-telus-purple/5 to-telus-green/5 sticky top-8">
-            <h3 className="font-semibold text-gray-900 mb-4">Preview</h3>
-
-            <div className="space-y-4">
-              {formData.name && (
-                <div>
-                  <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">
-                    Project Name
-                  </p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {formData.name}
-                  </p>
-                </div>
-              )}
-
-              {formData.description && (
-                <div>
-                  <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">
-                    Description
-                  </p>
-                  <p className="text-sm text-gray-700">
-                    {formData.description}
-                  </p>
-                </div>
-              )}
-
-              {formData.clientContext && (
-                <div>
-                  <p className="text-xs text-gray-600 uppercase tracking-wide mb-1">
-                    Client Context
-                  </p>
-                  <p className="text-sm text-gray-700 line-clamp-4">
-                    {formData.clientContext}
-                  </p>
-                </div>
-              )}
-
-              {!formData.name && !formData.description && !formData.clientContext && (
-                <div className="py-8 text-center">
-                  <p className="text-sm text-gray-400">
-                    Fill in the form to see preview
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+          </form>
+        </motion.div>
       </div>
     </div>
   );

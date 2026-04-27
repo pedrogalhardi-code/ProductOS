@@ -1,37 +1,59 @@
 import { Outlet } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import Sidebar from './Sidebar';
-import { LogOut, User } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 
 export default function Layout() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
+  const initials =
+    user?.name
+      ?.split(' ')
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || 'U';
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div
+      className="flex h-screen"
+      style={{ backgroundColor: 'var(--neutral-100)' }}
+    >
       <Sidebar />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-gray-900">ProductOS</h1>
+      <div className="flex-1 flex flex-col min-w-0">
+        <header
+          className="h-16 bg-white px-8 flex items-center justify-between"
+          style={{ borderBottom: '1px solid var(--border)' }}
+        >
+          <div className="flex items-center gap-4">
+            <h2
+              className="font-medium"
+              style={{ color: 'var(--neutral-900)' }}
+            >
+              ProductOS
+            </h2>
+          </div>
 
           <div className="flex items-center gap-4">
             {user && (
-              <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-telus-purple text-white flex items-center justify-center text-sm font-medium">
-                  {user.name?.charAt(0).toUpperCase() || <User className="w-4 h-4" />}
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full gradient-mark flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">{initials}</span>
                 </div>
-                <span className="text-sm font-medium text-gray-700">{user.name}</span>
+                <span className="text-sm font-medium">{user.name}</span>
               </div>
             )}
-
             <button
               onClick={logout}
-              className="inline-flex items-center gap-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
+              className="transition-colors"
+              style={{ color: 'var(--neutral-500)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--neutral-900)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--neutral-500)')}
               title="Logout"
             >
-              <LogOut className="w-4 h-4" />
-              <span className="text-sm font-medium">Logout</span>
+              <LogOut size={18} />
             </button>
           </div>
         </header>

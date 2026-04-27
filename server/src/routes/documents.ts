@@ -12,9 +12,11 @@ import {
   addComment,
   getComments,
   updateComment,
+  analyzeDocument,
 } from '../controllers/documentController';
 import { aiRateLimiter } from '../middleware/rateLimiter';
 import { exportController } from '../controllers/exportController';
+import { analyzeUpload } from '../middleware/upload';
 
 const router = Router();
 
@@ -25,9 +27,10 @@ router.get('/:id', getDocument);
 router.patch('/:id', updateDocument);
 router.delete('/:id', deleteDocument);
 
-// AI generation and review (rate limited)
+// AI generation, review, and document analysis (rate limited)
 router.post('/generate', aiRateLimiter, generateDocument);
 router.post('/:id/review', aiRateLimiter, reviewDocument);
+router.post('/analyze', aiRateLimiter, analyzeUpload, analyzeDocument);
 
 // Versioning
 router.get('/:id/versions', getVersions);
