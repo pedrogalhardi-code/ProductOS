@@ -42,6 +42,16 @@ export interface CreateProjectPayload {
   name: string;
   description?: string;
   clientContext: string;
+  // attachments are sent as multipart/form-data and handled server-side,
+  // not part of this JSON payload.
+}
+
+export interface ProjectAttachmentDto {
+  id: string;
+  projectId: string;
+  name: string;
+  size: number;
+  createdAt: string;
 }
 
 export interface UpdateProjectPayload {
@@ -109,6 +119,45 @@ export interface UpdateSettingsPayload {
   systemPromptPrefix?: string;
 }
 
+export interface UpdateProfilePayload {
+  name?: string;
+  email?: string;
+  avatarUrl?: string | null;
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
+export type ChatMessageRole = 'user' | 'assistant' | 'system';
+
+export interface ChatMessage {
+  role: ChatMessageRole;
+  content: string;
+}
+
+export type ChatMode = 'chat' | 'generate' | 'edit';
+
+export interface ChatStreamPayload {
+  messages: ChatMessage[];
+  mode: ChatMode;
+  projectId?: string;
+  documentType?: DocumentType;
+  currentContent?: string;
+  language?: string;
+  tone?: Tone;
+}
+
+export interface AnalyzeDocumentPayload {
+  documentType: DocumentType;
+  // file sent as multipart/form-data
+}
+
+export interface AnalyzeDocumentResponse {
+  analysis: string;
+  extractedText: string;
+  fileName: string;
+  fileSize: number;
+}
+
 // ─── Response Types ───────────────────────────────────────────────────────────
 
 export interface ApiResponse<T> {
@@ -141,6 +190,7 @@ export interface ProjectDto {
   updatedAt: string;
   memberCount?: number;
   documentCount?: number;
+  attachments?: ProjectAttachmentDto[];
 }
 
 export interface DocumentDto {
@@ -168,6 +218,7 @@ export interface DocVersionDto {
   documentId: string;
   content: string;
   label?: string | null;
+  changes?: string | null;
   createdAt: string;
   authorId: string;
   author?: UserDto;

@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../services/db';
 import { logAudit } from '../services/auditService';
-import { streamDocumentGeneration, streamCPOReview } from '../services/aiService';
+import { streamDocumentGeneration, streamCPOReview, analyzeDocument as analyzeDocumentAI } from '../services/aiService';
+import { extractTextFromFile } from '../services/fileExtractor';
 import { AppError } from '../middleware/errorHandler';
 import { AuditAction, DocumentType, DocumentStatus } from '../types/enums';
 
@@ -272,7 +273,7 @@ export async function getVersions(req: Request, res: Response, next: NextFunctio
 
     const versions = await prisma.docVersion.findMany({
       where: { documentId: id },
-      include: { author: { select: { id: true, name: true, email: true } } },
+      include: { author: { select: { id: true, name: true, email: true, role: true, avatarUrl: true, createdAt: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -280,7 +281,58 @@ export async function getVersions(req: Request, res: Response, next: NextFunctio
       data: versions.map((v) => ({
         ...v,
         createdAt: v.createdAt.toISOString(),
+        author: v.author
+          ? { ...v.author, createdAt: v.author.createdAt.toISOString() }
+          : undefined,
       })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Analyze an uploaded file from a product management perspective and return
+ * the analysis + extracted text. The client can then call createDocument with
+ * the extracted text if the user clicks "Import & Improve".
+ */
+export async function analyzeDocument(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId!;
+    const file = req.file;
+    if (!file) throw new AppError(400, 'Missing file upload');
+
+    const AnalyzeSchema = z.object({
+      documentType: z.enum(['PRD', 'USER_STORIES', 'TECHNICAL_SPEC', 'PRODUCT_BRIEF', 'ROADMAP', 'OKRS']),
+      projectId: z.string().cuid().optional(),
+    });
+    const body = AnalyzeSchema.parse(req.body);
+
+    // Optional project context for better analysis
+    let clientContext: string | undefined;
+    if (body.projectId) {
+      const project = await prisma.project.findFirst({
+        where: { id: body.projectId, members: { some: { userId } } },
+      });
+      if (!project) throw new AppError(404, 'Project not found');
+      clientContext = project.clientContext;
+    }
+
+    const text = await extractTextFromFile(file.buffer, file.mimetype, file.originalname);
+    const analysis = await analyzeDocumentAI({
+      fileText: text,
+      fileName: file.originalname,
+      documentType: body.documentType,
+      clientContext,
+    });
+
+    res.json({
+      data: {
+        analysis,
+        extractedText: text,
+        fileName: file.originalname,
+        fileSize: file.size,
+      },
     });
   } catch (error) {
     next(error);

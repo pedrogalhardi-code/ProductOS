@@ -7,7 +7,6 @@ import type {
   CommentDto,
   IntegrationDto,
   GenerateDocumentPayload,
-  CreateProjectPayload,
   UpdateProjectPayload,
   CreateDocumentPayload,
   UpdateDocumentPayload,
@@ -17,8 +16,15 @@ import type {
   PushToJiraPayload,
   PostToSlackPayload,
   UpdateSettingsPayload,
+  UpdateProfilePayload,
   PaginatedResponse,
   ApiResponse,
+  ChatMessage,
+  ChatMode,
+  DocumentType,
+  Tone,
+  UserDto,
+  AnalyzeDocumentResponse,
 } from '@shared/types';
 
 const api = axios.create({
@@ -49,10 +55,12 @@ api.interceptors.response.use(
 
 export const auth = {
   register: (email: string, name: string, password: string) =>
-    api.post<ApiResponse<{ token: string; user: { id: string; email: string; name: string; role: string } }>>('/auth/register', { email, name, password }),
+    api.post<ApiResponse<{ token: string; user: { id: string; email: string; name: string; role: string; avatarUrl?: string | null } }>>('/auth/register', { email, name, password }),
   login: (email: string, password: string) =>
-    api.post<ApiResponse<{ token: string; user: { id: string; email: string; name: string; role: string } }>>('/auth/login', { email, password }),
+    api.post<ApiResponse<{ token: string; user: { id: string; email: string; name: string; role: string; avatarUrl?: string | null } }>>('/auth/login', { email, password }),
   me: () => api.get('/auth/me'),
+  updateProfile: (payload: UpdateProfilePayload) =>
+    api.patch<ApiResponse<UserDto>>('/auth/profile', payload),
 };
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -60,9 +68,37 @@ export const auth = {
 export const projects = {
   list: () => api.get<ApiResponse<ProjectDto[]>>('/projects'),
   get: (id: string) => api.get<ApiResponse<ProjectDto>>(`/projects/${id}`),
-  create: (payload: CreateProjectPayload) => api.post<ApiResponse<ProjectDto>>('/projects', payload),
+  create: (payload: {
+    name: string;
+    description?: string;
+    clientContext: string;
+    attachments?: File[];
+  }) => {
+    const form = new FormData();
+    form.append('name', payload.name);
+    if (payload.description) form.append('description', payload.description);
+    form.append('clientContext', payload.clientContext);
+    for (const file of payload.attachments ?? []) {
+      form.append('attachments', file);
+    }
+    return api.post<ApiResponse<ProjectDto>>('/projects', form, {
+      // Let axios populate multipart/form-data; boundary=... from the FormData instance
+      headers: { 'Content-Type': undefined as unknown as string },
+    });
+  },
   update: (id: string, payload: UpdateProjectPayload) => api.patch<ApiResponse<ProjectDto>>(`/projects/${id}`, payload),
   delete: (id: string) => api.delete(`/projects/${id}`),
+  addAttachments: (id: string, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append('attachments', file);
+    return api.post<ApiResponse<Array<{ id: string; name: string; size: number; projectId: string; createdAt: string }>>>(
+      `/projects/${id}/attachments`,
+      form,
+      { headers: { 'Content-Type': undefined as unknown as string } }
+    );
+  },
+  deleteAttachment: (projectId: string, attachmentId: string) =>
+    api.delete(`/projects/${projectId}/attachments/${attachmentId}`),
 };
 
 // ─── Documents ────────────────────────────────────────────────────────────────
@@ -88,6 +124,15 @@ export const documents = {
     api.post<ApiResponse<CommentDto>>(`/documents/${id}/comments`, payload),
   updateComment: (commentId: string, payload: UpdateCommentPayload) =>
     api.patch<ApiResponse<CommentDto>>(`/documents/comments/${commentId}`, payload),
+  analyze: (file: File, documentType: DocumentType, projectId?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('documentType', documentType);
+    if (projectId) form.append('projectId', projectId);
+    return api.post<ApiResponse<AnalyzeDocumentResponse>>('/documents/analyze', form, {
+      headers: { 'Content-Type': undefined as unknown as string },
+    });
+  },
 };
 
 // ─── AI (SSE streaming) ───────────────────────────────────────────────────────
@@ -229,6 +274,108 @@ export function streamReview(
     .catch((error: unknown) => {
       if (error instanceof Error && error.name !== 'AbortError') {
         onError(error.message);
+      }
+    });
+
+  return () => controller.abort();
+}
+
+// ─── Chat (SSE streaming) ─────────────────────────────────────────────────────
+
+export interface StreamChatCallbacks {
+  onDelta: (delta: string) => void;
+  onDone: (fullContent: string) => void;
+  onError: (error: string) => void;
+}
+
+export function extractAttachmentText(file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post<ApiResponse<{ fileName: string; fileSize: number; text: string }>>(
+    '/chat/extract',
+    form,
+    { headers: { 'Content-Type': undefined as unknown as string } }
+  );
+}
+
+export function streamChat(
+  payload: {
+    messages: ChatMessage[];
+    mode: ChatMode;
+    projectId?: string;
+    documentType?: DocumentType;
+    currentContent?: string;
+    language?: string;
+    tone?: Tone;
+  },
+  callbacks: StreamChatCallbacks
+): () => void {
+  const token = useAuthStore.getState().token;
+  const controller = new AbortController();
+
+  fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify(payload),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok || !response.body) {
+        callbacks.onError(`HTTP ${response.status}: ${response.statusText}`);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+      let doneFired = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6)) as {
+              type: string;
+              content?: string;
+              error?: string;
+            };
+            if (event.type === 'delta' && event.content) {
+              accumulated += event.content;
+              callbacks.onDelta(event.content);
+            } else if (event.type === 'done') {
+              doneFired = true;
+              callbacks.onDone(event.content || accumulated);
+            } else if (event.type === 'error') {
+              callbacks.onError(event.error ?? 'Chat failed');
+              doneFired = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      // If the stream ended without an explicit done event, close the loop
+      // using whatever text we accumulated.
+      if (!doneFired && accumulated) {
+        callbacks.onDone(accumulated);
+      }
+    })
+    .catch((error: unknown) => {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        callbacks.onError(error.message);
       }
     });
 

@@ -14,13 +14,14 @@ datasource db {
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      String   @default("EDITOR") // ADMIN | EDITOR | VIEWER
-  avatarUrl String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         String   @default("EDITOR") // ADMIN | EDITOR | VIEWER
+  avatarUrl    String?  // data URL or remote URL for the profile picture
+  passwordHash String?  // bcrypt hash; nullable for legacy users, set on register/change
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   authoredDocuments Document[]      @relation("DocumentAuthor")
   versions          DocVersion[]
@@ -55,10 +56,24 @@ model Project {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  documents Document[]
-  members   ProjectMember[]
+  documents   Document[]
+  members     ProjectMember[]
+  attachments ProjectAttachment[]
 
   @@map("projects")
+}
+
+model ProjectAttachment {
+  id        String   @id @default(cuid())
+  projectId String
+  name      String
+  size      Int
+  text      String   // extracted text from PDF/document, used as additional context
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_attachments")
 }
 
 model ProjectMember {
@@ -105,6 +120,7 @@ model DocVersion {
   documentId String
   content    String
   label      String?
+  changes    String?  // human-readable change description, e.g. "Updated success metrics"
   createdAt  DateTime @default(now())
   authorId   String
 

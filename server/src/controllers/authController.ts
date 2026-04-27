@@ -16,6 +16,12 @@ const LoginSchema = z.object({
   password: z.string().min(1),
 });
 
+const UpdateProfileSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  email: z.string().email().optional(),
+  avatarUrl: z.string().max(2_000_000).nullable().optional(), // allows data: URLs up to ~2MB
+});
+
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const body = RegisterSchema.parse(req.body);
@@ -29,9 +35,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
       data: {
         email: body.email,
         name: body.name,
-        // Store hashed password in avatarUrl field temporarily
-        // In production, add a passwordHash field to the schema
-        avatarUrl: `hash:${passwordHash}`,
+        passwordHash,
         settings: {
           create: {
             language: 'en',
@@ -51,6 +55,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
           email: user.email,
           name: user.name,
           role: user.role,
+          avatarUrl: user.avatarUrl,
           createdAt: user.createdAt.toISOString(),
         },
       },
@@ -65,13 +70,28 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     const body = LoginSchema.parse(req.body);
 
     const user = await prisma.user.findUnique({ where: { email: body.email } });
-    if (!user || !user.avatarUrl?.startsWith('hash:')) {
-      throw new AppError(401, 'Invalid email or password');
-    }
+    if (!user) throw new AppError(401, 'Invalid email or password');
 
-    const passwordHash = user.avatarUrl.replace('hash:', '');
+    // New path: stored passwordHash
+    // Legacy path: hash stored in avatarUrl with "hash:" prefix (migration from before passwordHash column existed)
+    let passwordHash = user.passwordHash;
+    let migratedFromLegacy = false;
+    if (!passwordHash && user.avatarUrl?.startsWith('hash:')) {
+      passwordHash = user.avatarUrl.slice(5);
+      migratedFromLegacy = true;
+    }
+    if (!passwordHash) throw new AppError(401, 'Invalid email or password');
+
     const valid = await bcrypt.compare(body.password, passwordHash);
     if (!valid) throw new AppError(401, 'Invalid email or password');
+
+    // Opportunistically migrate legacy users on successful login
+    if (migratedFromLegacy) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash, avatarUrl: null },
+      });
+    }
 
     const token = signToken(user.id, user.email);
 
@@ -83,7 +103,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
           email: user.email,
           name: user.name,
           role: user.role,
-          avatarUrl: null,
+          avatarUrl: migratedFromLegacy ? null : user.avatarUrl,
           createdAt: user.createdAt.toISOString(),
         },
       },
@@ -95,4 +115,40 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 
 export async function me(req: Request, res: Response): Promise<void> {
   res.json({ data: req.user });
+}
+
+export async function updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId!;
+    const body = UpdateProfileSchema.parse(req.body);
+
+    if (body.email) {
+      const existing = await prisma.user.findUnique({ where: { email: body.email } });
+      if (existing && existing.id !== userId) {
+        throw new AppError(409, 'Email already in use');
+      }
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(body.name !== undefined && { name: body.name }),
+        ...(body.email !== undefined && { email: body.email }),
+        ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl }),
+      },
+    });
+
+    res.json({
+      data: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatarUrl: user.avatarUrl,
+        createdAt: user.createdAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
 }

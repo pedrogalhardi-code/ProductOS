@@ -1,4 +1,7 @@
-import 'dotenv/config';
+// MUST be first import — loads .env with override:true before any other module
+// reads process.env at module-load time.
+import './env';
+
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -16,6 +19,7 @@ import projectsRouter from './routes/projects';
 import documentsRouter from './routes/documents';
 import integrationsRouter from './routes/integrations';
 import settingsRouter from './routes/settings';
+import chatRouter from './routes/chat';
 
 // OpenAPI spec (inline for now — extend in production)
 import openApiSpec from './openapi.json';
@@ -70,6 +74,7 @@ app.use('/api/projects', projectsRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/chat', chatRouter);
 
 // ─── Error handling ───────────────────────────────────────────────────────────
 
