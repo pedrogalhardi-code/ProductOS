@@ -49,12 +49,20 @@ model UserSettings {
 }
 
 model Project {
-  id            String   @id @default(cuid())
-  name          String
-  description   String?
-  clientContext String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                       String    @id @default(cuid())
+  name                     String
+  description              String?
+  clientContext            String
+  /// Plain text extracted from a local folder (browser) or synced Google Drive folder — merged into AI context
+  referenceContextMaterial String    @default("")
+  /// Cached length for list views (kept in sync when material updates)
+  referenceContextLength   Int       @default(0)
+  driveContextFolderId     String?
+  driveContextFolderName   String?
+  localContextFolderLabel  String?
+  referenceContextSyncedAt DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   documents   Document[]
   members     ProjectMember[]

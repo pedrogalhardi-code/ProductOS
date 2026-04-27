@@ -17,6 +17,7 @@ import type {
   PostToSlackPayload,
   UpdateSettingsPayload,
   UpdateProfilePayload,
+  DriveBrowseItemDto,
   PaginatedResponse,
   ApiResponse,
   ChatMessage,
@@ -73,11 +74,19 @@ export const projects = {
     description?: string;
     clientContext: string;
     attachments?: File[];
+    referenceContextMaterial?: string;
+    driveContextFolderId?: string | null;
+    driveContextFolderName?: string | null;
+    localContextFolderLabel?: string | null;
   }) => {
     const form = new FormData();
     form.append('name', payload.name);
     if (payload.description) form.append('description', payload.description);
     form.append('clientContext', payload.clientContext);
+    if (payload.referenceContextMaterial) form.append('referenceContextMaterial', payload.referenceContextMaterial);
+    if (payload.driveContextFolderId) form.append('driveContextFolderId', payload.driveContextFolderId);
+    if (payload.driveContextFolderName) form.append('driveContextFolderName', payload.driveContextFolderName);
+    if (payload.localContextFolderLabel) form.append('localContextFolderLabel', payload.localContextFolderLabel);
     for (const file of payload.attachments ?? []) {
       form.append('attachments', file);
     }
@@ -394,6 +403,12 @@ export const integrations = {
   confluenceSpaces: () => api.get('/integrations/confluence/spaces'),
   slackChannels: () => api.get('/integrations/slack/channels'),
   postToSlack: (payload: PostToSlackPayload) => api.post('/integrations/slack/post', payload),
+  googleDriveBrowse: (parentId?: string) =>
+    api.get<ApiResponse<{ items: DriveBrowseItemDto[] }>>('/integrations/google-drive/browse', {
+      params: parentId ? { parentId } : {},
+    }),
+  googleDriveSyncProjectFolder: (payload: { projectId: string; folderId: string }) =>
+    api.post<ApiResponse<ProjectDto>>('/integrations/google-drive/sync-project-folder', payload),
 };
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ArrowLeft, Upload, X, FileText } from 'lucide-react';
+import { ArrowLeft, Upload, X, FileText, FolderOpen, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useProjectStore } from '../stores/projectStore';
 import { projects } from '../services/api';
+import { pickAndScanLocalContextFolder } from '../lib/scanLocalContextFolder';
 
 export default function NewProjectPage() {
   const navigate = useNavigate();
@@ -15,6 +16,9 @@ export default function NewProjectPage() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [referenceContextMaterial, setReferenceContextMaterial] = useState('');
+  const [localContextFolderLabel, setLocalContextFolderLabel] = useState<string | null>(null);
+  const [scanningFolder, setScanningFolder] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -38,6 +42,12 @@ export default function NewProjectPage() {
         name,
         clientContext,
         attachments: attachedFiles,
+        ...(referenceContextMaterial.trim()
+          ? {
+              referenceContextMaterial: referenceContextMaterial.trim(),
+              localContextFolderLabel,
+            }
+          : {}),
       });
       const newProject = response.data.data;
       addProject(newProject);
@@ -178,6 +188,64 @@ export default function NewProjectPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="rounded-lg p-4 space-y-3" style={{ border: '1px solid var(--border)', backgroundColor: 'var(--neutral-50)' }}>
+              <p className="text-sm font-medium" style={{ color: 'var(--neutral-900)' }}>Reference folder (optional)</p>
+              <p className="text-xs" style={{ color: 'var(--neutral-600)' }}>
+                Choose a folder on this computer. Text-like files are read in the browser and sent with the
+                project as extra AI context. Google Drive folders can be linked from the project page after creation.
+              </p>
+              <div className="flex flex-wrap gap-2 items-center">
+                <button
+                  type="button"
+                  disabled={scanningFolder}
+                  onClick={async () => {
+                    setScanningFolder(true);
+                    try {
+                      const result = await pickAndScanLocalContextFolder();
+                      if (!result) return;
+                      if (!result.text.trim()) {
+                        toast.error('No readable text files found in that folder');
+                        return;
+                      }
+                      setReferenceContextMaterial(result.text);
+                      setLocalContextFolderLabel(result.label);
+                      toast.success(`Imported from "${result.label}"`);
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'Could not read folder');
+                    } finally {
+                      setScanningFolder(false);
+                    }
+                  }}
+                  className="btn-secondary inline-flex items-center gap-2"
+                >
+                  {scanningFolder ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FolderOpen className="w-4 h-4" />
+                  )}
+                  {scanningFolder ? 'Reading…' : 'Choose local folder…'}
+                </button>
+                {referenceContextMaterial ? (
+                  <button
+                    type="button"
+                    className="text-sm text-red-600 hover:underline"
+                    onClick={() => {
+                      setReferenceContextMaterial('');
+                      setLocalContextFolderLabel(null);
+                    }}
+                  >
+                    Clear imported folder
+                  </button>
+                ) : null}
+              </div>
+              {referenceContextMaterial ? (
+                <p className="text-xs" style={{ color: 'var(--neutral-600)' }}>
+                  Linked: <span className="font-medium">{localContextFolderLabel}</span> —{' '}
+                  {referenceContextMaterial.length.toLocaleString()} characters of reference text
+                </p>
+              ) : null}
             </div>
 
             <div className="flex gap-3 pt-4">

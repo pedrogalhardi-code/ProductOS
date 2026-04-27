@@ -38,6 +38,13 @@ Suggest 1-3 events per metric. For funnel metrics, suggest the full event sequen
 
 End every analytics section with an "Instrumentation checklist" — 3-5 questions the PM must answer with the data/analytics engineer before sprint start.
 
+How to use context and when to ask the user for more:
+- The client context above may include a block headed exactly "--- Reference materials (local folder or Google Drive) ---" from files the user synced into this project. Treat everything after that heading as primary source material: extract product names, users, goals, constraints, metrics, and requirements from it before inventing details.
+- Produce the requested document in full. Prefer facts grounded in the client context and reference materials over generic filler.
+- Do NOT pad the document with long discovery questionnaires, interview scripts, or vague "what is the product?" lists. Integrate what you know; use concise bullets only where they add value.
+- ONLY if, after using everything above, you still cannot identify a minimal credible subject (for example no product, no user, and no goal at all—not even implied in the references), begin with a short section titled exactly "**Information needed before continuing**" with at most 5 concrete questions, then stop. Do not fabricate a full fake product in that case.
+- When you have enough to proceed, omit that section. If you made reasonable inferences, add a brief "### Assumptions" subsection stating them explicitly.
+
 Output language: {language}. Tone: {tone}.`;
 
 export const REVIEW_SYSTEM_PROMPT = `You are a seasoned Chief Product Officer conducting a rigorous review of a Telus Digital product document for a client engagement.

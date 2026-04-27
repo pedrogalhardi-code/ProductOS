@@ -57,6 +57,11 @@ describe('prompts — GENERATION_SYSTEM_PROMPT', () => {
     expect(GENERATION_SYSTEM_PROMPT).toContain('analytics instrumentation');
     expect(GENERATION_SYSTEM_PROMPT).toContain('snake_case');
   });
+
+  it('instructs model to lean on synced reference materials and limit discovery questions', () => {
+    expect(GENERATION_SYSTEM_PROMPT).toContain('--- Reference materials (local folder or Google Drive) ---');
+    expect(GENERATION_SYSTEM_PROMPT).toContain('**Information needed before continuing**');
+  });
 });
 
 describe('prompts — REVIEW_SYSTEM_PROMPT', () => {
